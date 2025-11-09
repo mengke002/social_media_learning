@@ -316,11 +316,14 @@ class NotionClient:
             internalization = analysis.get('internalization_and_expression_techniques', {})
             reconstruction = analysis.get('reconstruction_showcase', [])
 
+            # 提取作者信息
+            author = report_data.get('author_name', '未知')
+            platform = report_data.get('source_platform', '未知')
+
             # 生成页面标题 - 优先使用LLM生成的title,否则使用core_thesis
             page_title = analysis.get('page_title')
             if not page_title:
                 core_thesis = deconstruction.get('core_thesis', '学习笔记')
-                author = report_data.get('author_name', '未知')
                 page_title = f"📝 {core_thesis[:40]} - {author}"
             else:
                 # 如果有LLM生成的title,在前面加个图标
@@ -533,7 +536,6 @@ class NotionClient:
                 "divider": {}
             })
 
-            platform = report_data.get('source_platform', '未知')
             meta_info = f"📱 {platform} | 👤 {author}"
 
             blocks.append({
