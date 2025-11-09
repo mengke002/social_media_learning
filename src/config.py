@@ -205,9 +205,9 @@ class Config:
         """获取处理任务配置"""
         return {
             'days_back': self._get_config_value('processing', 'days_back', 'PROCESSING_DAYS_BACK', 1, int),
-            'priority_threshold': self._get_config_value('processing', 'priority_threshold', 'PROCESSING_PRIORITY_THRESHOLD', 40, int),
-            'top_n_posts': self._get_config_value('processing', 'top_n_posts', 'PROCESSING_TOP_N_POSTS', 20, int),
-            'fast_llm_workers': self._get_config_value('processing', 'fast_llm_workers', 'PROCESSING_FAST_LLM_WORKERS', 5, int),
+            'priority_threshold': self._get_config_value('processing', 'priority_threshold', 'PROCESSING_PRIORITY_THRESHOLD', 20, int),
+            'top_n_posts': self._get_config_value('processing', 'top_n_posts', 'PROCESSING_TOP_N_POSTS', 50, int),
+            'fast_llm_workers': self._get_config_value('processing', 'fast_llm_workers', 'PROCESSING_FAST_LLM_WORKERS', 10, int),
             'fast_llm_delay': self._get_config_value('processing', 'fast_llm_delay', 'PROCESSING_FAST_LLM_DELAY', 0.5, float),
             'smart_model_workers': self._get_config_value('processing', 'smart_model_workers', 'PROCESSING_SMART_MODEL_WORKERS', 2, int),
             'smart_model_delay': self._get_config_value('processing', 'smart_model_delay', 'PROCESSING_SMART_MODEL_DELAY', 2.0, float),

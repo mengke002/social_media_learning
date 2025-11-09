@@ -1,0 +1,84 @@
+name: Social Media Learning Pipeline
+
+on:
+  schedule:
+    # 每天北京时间0:00运行 (UTC 16:00)
+    - cron: '0 16 * * *'
+  workflow_dispatch:
+    # 支持手动触发
+
+jobs:
+  daily-learning:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Daily Learning Pipeline
+        env:
+          # 学习数据库配置
+          LEARNING_DB_HOST: ${{ secrets.LEARNING_DB_HOST }}
+          LEARNING_DB_PORT: ${{ secrets.LEARNING_DB_PORT }}
+          LEARNING_DB_USER: ${{ secrets.LEARNING_DB_USER }}
+          LEARNING_DB_PASSWORD: ${{ secrets.LEARNING_DB_PASSWORD }}
+          LEARNING_DB_NAME: ${{ secrets.LEARNING_DB_NAME }}
+          LEARNING_DB_SSL_MODE: REQUIRED
+
+          # X数据源数据库配置
+          SOURCE_X_DB_HOST: ${{ secrets.SOURCE_X_DB_HOST }}
+          SOURCE_X_DB_PORT: ${{ secrets.SOURCE_X_DB_PORT }}
+          SOURCE_X_DB_USER: ${{ secrets.SOURCE_X_DB_USER }}
+          SOURCE_X_DB_PASSWORD: ${{ secrets.SOURCE_X_DB_PASSWORD }}
+          SOURCE_X_DB_NAME: ${{ secrets.SOURCE_X_DB_NAME }}
+          SOURCE_X_DB_SSL_MODE: REQUIRED
+
+          # 即刻数据源数据库配置
+          SOURCE_JIKE_DB_HOST: ${{ secrets.SOURCE_JIKE_DB_HOST }}
+          SOURCE_JIKE_DB_PORT: ${{ secrets.SOURCE_JIKE_DB_PORT }}
+          SOURCE_JIKE_DB_USER: ${{ secrets.SOURCE_JIKE_DB_USER }}
+          SOURCE_JIKE_DB_PASSWORD: ${{ secrets.SOURCE_JIKE_DB_PASSWORD }}
+          SOURCE_JIKE_DB_NAME: ${{ secrets.SOURCE_JIKE_DB_NAME }}
+          SOURCE_JIKE_DB_SSL_MODE: REQUIRED
+
+          # LLM配置
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          LLM_FAST_MODEL_NAME: ${{ secrets.LLM_FAST_MODEL_NAME }}
+          LLM_SMART_MODELS: ${{ secrets.LLM_SMART_MODELS }}
+
+          # Notion配置
+          NOTION_INTEGRATION_TOKEN: ${{ secrets.NOTION_INTEGRATION_TOKEN }}
+          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
+
+          # 处理配置(可选,有默认值)
+          PROCESSING_DAYS_BACK: 1
+          PROCESSING_PRIORITY_THRESHOLD: 40
+          PROCESSING_TOP_N_POSTS: 20
+          PROCESSING_FAST_LLM_WORKERS: 5
+          PROCESSING_FAST_LLM_DELAY: 0.5
+          PROCESSING_SMART_MODEL_WORKERS: 2
+          PROCESSING_SMART_MODEL_DELAY: 2.0
+          PROCESSING_SMART_MODEL_RETRY_DELAY: 10.0
+
+        run: |
+          python3.12 main.py --task daily_learning
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: learning-pipeline-logs
+          path: logs/
+          retention-days: 7
