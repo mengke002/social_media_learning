@@ -355,11 +355,118 @@ def task_daily_learning(args):
         raise
 
 
+def task_fast_llm_analysis(args):
+    """任务1: Fast LLM优先级评估 (每2小时运行)
+
+    处理所有未分析的帖子,进行快速优先级评估并保存结果到数据库
+    """
+    logger = logging.getLogger(__name__)
+
+    try:
+        # 初始化组件
+        logger.info("初始化组件...")
+        db_manager = DatabaseManager(config)
+        source_reader = SourceReader(config, db_manager)
+        llm_processor = LLMProcessor(config)
+        processing_config = config.get_processing_config()
+
+        # 获取未处理的帖子
+        days_back = processing_config['days_back']
+        logger.info(f"获取最近 {days_back} 天的未处理帖子...")
+        all_posts = source_reader.get_all_unprocessed_posts(days_back)
+
+        if not all_posts:
+            logger.info("没有找到未处理的帖子")
+            return
+
+        # 进行优先级分析
+        logger.info(f"开始Fast LLM优先级评估,共 {len(all_posts)} 个帖子")
+        high_value_posts = process_priority_analysis_batch(all_posts, llm_processor, db_manager, processing_config)
+
+        # 打印统计
+        logger.info("=" * 60)
+        logger.info("Fast LLM分析完成 - 统计信息:")
+        logger.info(f"  总处理数: {len(all_posts)}")
+        logger.info(f"  高价值帖子: {len(high_value_posts)}")
+        logger.info(f"  阈值: {processing_config['priority_threshold']}")
+        logger.info("=" * 60)
+
+    except Exception as e:
+        logger.error(f"执行Fast LLM分析任务时出错: {e}", exc_info=True)
+        raise
+
+
+def task_smart_model_analysis(args):
+    """任务2: Smart Model深度分析 + Notion推送 (每4小时运行)
+
+    从数据库中获取高分帖子,进行深度分析并推送到Notion
+    """
+    logger = logging.getLogger(__name__)
+
+    try:
+        # 初始化组件
+        logger.info("初始化组件...")
+        db_manager = DatabaseManager(config)
+        llm_processor = LLMProcessor(config)
+        notion_client = NotionClient(config)
+        processing_config = config.get_processing_config()
+
+        top_n = processing_config['top_n_posts']
+
+        # 从数据库获取待深度分析的帖子
+        logger.info(f"从数据库获取Top {top_n} 待深度分析的帖子...")
+        top_posts_data = db_manager.get_posts_for_depth_analysis(limit=top_n)
+
+        if not top_posts_data:
+            logger.info("没有找到待深度分析的帖子")
+            return
+
+        # 转换为处理格式
+        top_posts = []
+        for post in top_posts_data:
+            top_posts.append({
+                'source_platform': post['source_platform'],
+                'source_post_id': post['source_post_id'],
+                'original_content': post['original_content'],
+                'original_url': post.get('original_url'),
+                'author_name': post.get('author_name'),
+                'final_priority_score': post.get('final_priority_score', 0),
+                'has_image': False,  # 可从priority_analysis中提取
+                'interpretation': None  # 如需要可从原始数据补充
+            })
+
+        logger.info(f"选取Top {len(top_posts)} 个帖子进行深度分析")
+
+        # 第二阶段:深度分析
+        analyzed_reports = process_depth_analysis_batch(top_posts, llm_processor, db_manager, processing_config)
+
+        if not analyzed_reports:
+            logger.info("没有成功完成深度分析的报告")
+            return
+
+        # 第三阶段:推送到Notion
+        push_to_notion_batch(analyzed_reports, notion_client, db_manager)
+
+        # 打印统计信息
+        stats = db_manager.get_statistics()
+        logger.info("=" * 60)
+        logger.info("Smart Model分析完成 - 统计信息:")
+        logger.info(f"  深度分析: {stats.get('depth_analyzed', 0)}")
+        logger.info(f"  已推送: {stats.get('pushed_to_notion', 0)}")
+        logger.info("=" * 60)
+
+    except Exception as e:
+        logger.error(f"执行Smart Model分析任务时出错: {e}", exc_info=True)
+        raise
+
+
 def main():
     """主程序入口"""
     parser = argparse.ArgumentParser(description='社交媒体学习流水线')
-    parser.add_argument('--task', type=str, choices=['daily_learning'], required=True,
-                       help='要执行的任务')
+    parser.add_argument('--task', type=str,
+                       choices=['daily_learning', 'fast_llm', 'smart_model'],
+                       required=True,
+                       help='要执行的任务: daily_learning(完整流程), fast_llm(优先级评估), smart_model(深度分析+推送)')
 
     args = parser.parse_args()
 
@@ -368,7 +475,14 @@ def main():
 
     try:
         if args.task == 'daily_learning':
+            # 完整流程(向后兼容)
             task_daily_learning(args)
+        elif args.task == 'fast_llm':
+            # Fast LLM优先级评估
+            task_fast_llm_analysis(args)
+        elif args.task == 'smart_model':
+            # Smart Model深度分析 + Notion推送
+            task_smart_model_analysis(args)
 
         logger.info("程序执行完成")
 

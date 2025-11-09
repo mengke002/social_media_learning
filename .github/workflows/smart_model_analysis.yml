@@ -1,17 +1,18 @@
-name: Social Media Learning Pipeline
+name: Smart Model Analysis (Every 4 Hours)
 
 on:
   schedule:
-    # 每天北京时间1:00运行 (UTC 17:00)
-    # 作为兜底任务,处理前一天可能遗漏的帖子
-    - cron: '0 17 * * *'
+    # 每4小时运行一次,但跳过UTC 20:00 (北京时间4:00,数据源不工作)
+    # 运行时间(UTC): 0:00, 4:00, 8:00, 12:00, 16:00
+    # 对应北京时间: 8:00, 12:00, 16:00, 20:00, 0:00
+    - cron: '0 0,4,8,12,16 * * *'
   workflow_dispatch:
     # 支持手动触发
 
 jobs:
-  daily-learning:
+  smart-model-analysis:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90  # Smart Model较慢,给足够时间
 
     steps:
       - name: Checkout code
@@ -27,7 +28,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Daily Learning Pipeline
+      - name: Run Smart Model Analysis and Notion Push
         env:
           # 学习数据库配置
           LEARNING_DB_HOST: ${{ secrets.LEARNING_DB_HOST }}
@@ -37,49 +38,28 @@ jobs:
           LEARNING_DB_NAME: ${{ secrets.LEARNING_DB_NAME }}
           LEARNING_DB_SSL_MODE: REQUIRED
 
-          # X数据源数据库配置
-          SOURCE_X_DB_HOST: ${{ secrets.SOURCE_X_DB_HOST }}
-          SOURCE_X_DB_PORT: ${{ secrets.SOURCE_X_DB_PORT }}
-          SOURCE_X_DB_USER: ${{ secrets.SOURCE_X_DB_USER }}
-          SOURCE_X_DB_PASSWORD: ${{ secrets.SOURCE_X_DB_PASSWORD }}
-          SOURCE_X_DB_NAME: ${{ secrets.SOURCE_X_DB_NAME }}
-          SOURCE_X_DB_SSL_MODE: REQUIRED
-
-          # 即刻数据源数据库配置
-          SOURCE_JIKE_DB_HOST: ${{ secrets.SOURCE_JIKE_DB_HOST }}
-          SOURCE_JIKE_DB_PORT: ${{ secrets.SOURCE_JIKE_DB_PORT }}
-          SOURCE_JIKE_DB_USER: ${{ secrets.SOURCE_JIKE_DB_USER }}
-          SOURCE_JIKE_DB_PASSWORD: ${{ secrets.SOURCE_JIKE_DB_PASSWORD }}
-          SOURCE_JIKE_DB_NAME: ${{ secrets.SOURCE_JIKE_DB_NAME }}
-          SOURCE_JIKE_DB_SSL_MODE: REQUIRED
-
           # LLM配置
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
-          LLM_FAST_MODEL_NAME: ${{ secrets.LLM_FAST_MODEL_NAME }}
           LLM_SMART_MODELS: ${{ secrets.LLM_SMART_MODELS }}
 
           # Notion配置
           NOTION_INTEGRATION_TOKEN: ${{ secrets.NOTION_INTEGRATION_TOKEN }}
           NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
 
-          # 处理配置(可选,有默认值)
-          PROCESSING_DAYS_BACK: 1
-          PROCESSING_PRIORITY_THRESHOLD: 40
+          # 处理配置
           PROCESSING_TOP_N_POSTS: 20
-          PROCESSING_FAST_LLM_WORKERS: 5
-          PROCESSING_FAST_LLM_DELAY: 0.5
           PROCESSING_SMART_MODEL_WORKERS: 2
           PROCESSING_SMART_MODEL_DELAY: 2.0
           PROCESSING_SMART_MODEL_RETRY_DELAY: 10.0
 
         run: |
-          python3.12 main.py --task daily_learning
+          python3.12 main.py --task smart_model
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: learning-pipeline-logs
+          name: smart-model-logs-${{ github.run_number }}
           path: logs/
           retention-days: 7

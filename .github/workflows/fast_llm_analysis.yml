@@ -1,17 +1,18 @@
-name: Social Media Learning Pipeline
+name: Fast LLM Analysis (Every 2 Hours)
 
 on:
   schedule:
-    # 每天北京时间1:00运行 (UTC 17:00)
-    # 作为兜底任务,处理前一天可能遗漏的帖子
-    - cron: '0 17 * * *'
+    # 每2小时运行一次,但跳过UTC 17:00-23:00 (北京时间1:00-7:00,数据源不工作)
+    # 运行时间(UTC): 1:00, 3:00, 5:00, 7:00, 9:00, 11:00, 13:00, 15:00
+    # 对应北京时间: 9:00, 11:00, 13:00, 15:00, 17:00, 19:00, 21:00, 23:00
+    - cron: '0 1,3,5,7,9,11,13,15 * * *'
   workflow_dispatch:
     # 支持手动触发
 
 jobs:
-  daily-learning:
+  fast-llm-analysis:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30  # Fast LLM较快,30分钟足够
 
     steps:
       - name: Checkout code
@@ -27,7 +28,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Daily Learning Pipeline
+      - name: Run Fast LLM Priority Analysis
         env:
           # 学习数据库配置
           LEARNING_DB_HOST: ${{ secrets.LEARNING_DB_HOST }}
@@ -57,29 +58,20 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           LLM_FAST_MODEL_NAME: ${{ secrets.LLM_FAST_MODEL_NAME }}
-          LLM_SMART_MODELS: ${{ secrets.LLM_SMART_MODELS }}
 
-          # Notion配置
-          NOTION_INTEGRATION_TOKEN: ${{ secrets.NOTION_INTEGRATION_TOKEN }}
-          NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
-
-          # 处理配置(可选,有默认值)
+          # 处理配置
           PROCESSING_DAYS_BACK: 1
           PROCESSING_PRIORITY_THRESHOLD: 40
-          PROCESSING_TOP_N_POSTS: 20
           PROCESSING_FAST_LLM_WORKERS: 5
           PROCESSING_FAST_LLM_DELAY: 0.5
-          PROCESSING_SMART_MODEL_WORKERS: 2
-          PROCESSING_SMART_MODEL_DELAY: 2.0
-          PROCESSING_SMART_MODEL_RETRY_DELAY: 10.0
 
         run: |
-          python3.12 main.py --task daily_learning
+          python3.12 main.py --task fast_llm
 
       - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: learning-pipeline-logs
+          name: fast-llm-logs-${{ github.run_number }}
           path: logs/
-          retention-days: 7
+          retention-days: 3
