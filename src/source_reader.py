@@ -230,3 +230,61 @@ class SourceReader:
 
         logger.info(f"总共获取到 {len(all_posts)} 个未处理的帖子")
         return all_posts
+
+    def get_interpretation_by_post_ids(self, platform: str, post_ids: List[str]) -> Dict[str, str]:
+        """批量获取帖子的VLM图片解读
+
+        Args:
+            platform: 平台名称 ('X' 或 'Jike')
+            post_ids: 帖子ID列表
+
+        Returns:
+            字典: {post_id: interpretation}
+        """
+        if not post_ids:
+            return {}
+
+        try:
+            if platform == 'X':
+                with self._get_x_connection() as conn:
+                    cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+                    placeholders = ','.join(['%s'] * len(post_ids))
+                    sql = f"""
+                    SELECT pi.post_id, pi.interpretation
+                    FROM post_insights pi
+                    WHERE pi.post_id IN ({placeholders})
+                      AND pi.status = 'completed'
+                      AND pi.interpretation IS NOT NULL
+                    """
+
+                    cursor.execute(sql, post_ids)
+                    results = cursor.fetchall()
+
+                    return {str(row['post_id']): row['interpretation'] for row in results}
+
+            elif platform == 'Jike':
+                with self._get_jike_connection() as conn:
+                    cursor = conn.cursor(pymysql.cursors.DictCursor)
+
+                    placeholders = ','.join(['%s'] * len(post_ids))
+                    sql = f"""
+                    SELECT pp.post_id, pp.interpretation_text
+                    FROM postprocessing pp
+                    WHERE pp.post_id IN ({placeholders})
+                      AND pp.status = 'success'
+                      AND pp.interpretation_text IS NOT NULL
+                    """
+
+                    cursor.execute(sql, post_ids)
+                    results = cursor.fetchall()
+
+                    return {str(row['post_id']): row['interpretation_text'] for row in results}
+
+            else:
+                logger.warning(f"不支持的平台: {platform}")
+                return {}
+
+        except Exception as e:
+            logger.error(f"批量获取{platform}图片解读失败: {e}", exc_info=True)
+            return {}

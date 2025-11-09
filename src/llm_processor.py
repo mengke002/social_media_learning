@@ -262,8 +262,8 @@ class LLMProcessor:
         except json.JSONDecodeError:
             pass
 
-        # 方法2: 提取 ```json ... ``` 代码块
-        json_block_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+        # 方法2: 提取 ```json ... ``` 代码块 (贪婪模式)
+        json_block_pattern = r'```(?:json)?\s*(\{.*\})\s*```'
         json_match = re.search(json_block_pattern, content, re.DOTALL)
         if json_match:
             try:
@@ -301,14 +301,47 @@ class LLMProcessor:
                 if error_pos and error_pos < len(extracted):
                     logger.debug(f"错误位置附近: {extracted[max(0, error_pos-30):error_pos+30]}")
 
-        # 方法5: 尝试修复常见的JSON格式问题
-        # 例如: 单引号替换为双引号
+        # 方法5: 尝试找到所有可能的JSON对象 (使用非贪婪和贪婪两种模式)
+        # 某些LLM可能在JSON前后添加额外的文本
+        all_brace_patterns = [
+            r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}',  # 非贪婪,匹配嵌套
+            r'\{.*\}',  # 贪婪模式
+        ]
+
+        for pattern in all_brace_patterns:
+            matches = re.findall(pattern, content, re.DOTALL)
+            # 按长度从长到短排序,优先尝试最长的匹配
+            matches.sort(key=len, reverse=True)
+
+            for match in matches:
+                try:
+                    parsed = json.loads(match)
+                    # 验证是否包含必要的顶层键
+                    if isinstance(parsed, dict) and len(parsed) > 0:
+                        logger.info(f"使用正则模式 {pattern} 成功提取JSON")
+                        return parsed
+                except json.JSONDecodeError:
+                    continue
+
+        # 方法6: 尝试修复常见的JSON格式问题
+        # 6.1: 去除JSON字符串中的控制字符
         try:
-            # 这个方法有风险,可能破坏字符串内容,谨慎使用
-            fixed = content.replace("'", '"')
-            return json.loads(fixed)
+            # 移除不可见字符
+            cleaned = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', content)
+            # 提取大括号内容
+            first_brace = cleaned.find('{')
+            last_brace = cleaned.rfind('}')
+            if first_brace != -1 and last_brace != -1:
+                extracted = cleaned[first_brace:last_brace+1]
+                return json.loads(extracted)
         except json.JSONDecodeError:
             pass
+
+        # 方法7: 最后的托底 - 如果响应看起来像是描述性文本,尝试基于关键字提取
+        # 检查是否包含JSON的关键结构词
+        if 'deconstruction' in content and 'reconstruction_showcase' in content:
+            logger.warning("响应包含预期的关键字但无法解析为JSON,可能是格式错误")
+            logger.debug(f"完整响应内容:\n{content}")
 
         logger.error(f"所有JSON提取方法均失败")
         logger.debug(f"响应前200字符: {content[:200]}")
@@ -345,6 +378,7 @@ class LLMProcessor:
 * **教学导向**: 你的报告不是为了直接发布,而是为了"教会"我。因此,过程、方法和技巧的拆解至关重要。
 * **结构化输出**: 必须严格遵循下面定义的JSON输出格式,不得有任何遗漏。
 * **图文融合**: 如果提供了图片解读,请在分析中充分融合视觉信息与文字信息,提炼出更立体的洞察。
+* **CRITICAL**: 你必须只返回JSON格式的数据,不要添加任何markdown格式、标题、说明文字或其他内容。输出必须是可以直接被json.loads()解析的纯JSON对象。
 
 # 4. 工作流与输出格式
 
@@ -397,9 +431,11 @@ class LLMProcessor:
 }}
 
 **重要提示**:
-1. 必须返回纯净的JSON格式,不要添加任何解释性文字
-2. 如果需要用代码块包裹,请使用 ```json ... ```
-3. 确保所有字段都填写完整
+1. 你的响应必须是上面JSON结构的精确实现,不要有任何额外的文字、标题、前言或说明
+2. 不要使用markdown代码块包裹(不要使用 ```json ... ```)
+3. 直接输出原始JSON对象,确保可以被标准JSON解析器直接解析
+4. 所有字段都必须填写完整,不能遗漏
+5. 禁止输出任何非JSON格式的内容,包括markdown标题、分隔线、解释性文字等
 
 [原文Post]如下:
 ```
@@ -427,6 +463,7 @@ class LLMProcessor:
 
                     if missing_fields:
                         logger.warning(f"JSON缺少必要字段: {missing_fields}")
+                        logger.warning(f"原始响应(前500字符): {content[:500]}")
                         last_result = {
                             'success': False,
                             'error': f"JSON缺少必要字段: {missing_fields}",
@@ -442,6 +479,7 @@ class LLMProcessor:
                         }
                 else:
                     logger.error(f"无法从响应中提取有效JSON (模型: {model_name})")
+                    logger.error(f"完整原始响应:\n{content}")
                     last_result = {
                         'success': False,
                         'error': '无法从响应中提取有效JSON',

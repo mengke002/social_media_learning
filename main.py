@@ -173,19 +173,25 @@ def process_depth_analysis_batch(posts: List[Dict[str, Any]], llm_processor: LLM
             # 构建分析内容:如果有图片且有VLM解读,则组合原文+解读
             has_image = post.get('has_image', False)
             interpretation = post.get('interpretation')
+            original_content = post['original_content']
+
+            # 去除原文中的图片markdown标记,避免干扰模型
+            import re
+            cleaned_content = re.sub(r'!\[.*?\]\(.*?\)', '', original_content)
+            cleaned_content = cleaned_content.strip()
 
             if has_image and interpretation:
-                # 有图片:组合原文和VLM解读
+                # 有图片:组合清理后的原文和VLM解读
                 analysis_content = f"""[原始帖子内容]
-{post['original_content']}
+{cleaned_content}
 
 [图片视觉解读]
 {interpretation}
 """
                 logger.info(f"帖子包含图片,已附加VLM解读 (解读长度: {len(interpretation)} 字符)")
             else:
-                # 无图片:只用原文
-                analysis_content = post['original_content']
+                # 无图片:只用清理后的原文
+                analysis_content = cleaned_content
                 logger.info("帖子不含图片,仅使用原文内容")
 
             # 运行Smart Model深度分析
@@ -407,6 +413,7 @@ def task_smart_model_analysis(args):
         # 初始化组件
         logger.info("初始化组件...")
         db_manager = DatabaseManager(config)
+        source_reader = SourceReader(config, db_manager)
         llm_processor = LLMProcessor(config)
         notion_client = NotionClient(config)
         processing_config = config.get_processing_config()
@@ -421,21 +428,44 @@ def task_smart_model_analysis(args):
             logger.info("没有找到待深度分析的帖子")
             return
 
-        # 转换为处理格式
+        # 按平台分组,批量获取VLM图片解读
+        logger.info("批量获取VLM图片解读...")
+        x_post_ids = [p['source_post_id'] for p in top_posts_data if p['source_platform'] == 'X']
+        jike_post_ids = [p['source_post_id'] for p in top_posts_data if p['source_platform'] == 'Jike']
+
+        x_interpretations = source_reader.get_interpretation_by_post_ids('X', x_post_ids) if x_post_ids else {}
+        jike_interpretations = source_reader.get_interpretation_by_post_ids('Jike', jike_post_ids) if jike_post_ids else {}
+
+        logger.info(f"获取到 {len(x_interpretations)} 个X图片解读, {len(jike_interpretations)} 个即刻图片解读")
+
+        # 转换为处理格式,并补充interpretation
         top_posts = []
         for post in top_posts_data:
+            platform = post['source_platform']
+            post_id = post['source_post_id']
+
+            # 获取interpretation
+            interpretation = None
+            if platform == 'X':
+                interpretation = x_interpretations.get(post_id)
+            elif platform == 'Jike':
+                interpretation = jike_interpretations.get(post_id)
+
+            # 判断是否有图片 (有interpretation就认为有图片)
+            has_image = bool(interpretation)
+
             top_posts.append({
-                'source_platform': post['source_platform'],
-                'source_post_id': post['source_post_id'],
+                'source_platform': platform,
+                'source_post_id': post_id,
                 'original_content': post['original_content'],
                 'original_url': post.get('original_url'),
                 'author_name': post.get('author_name'),
                 'final_priority_score': post.get('final_priority_score', 0),
-                'has_image': False,  # 可从priority_analysis中提取
-                'interpretation': None  # 如需要可从原始数据补充
+                'has_image': has_image,
+                'interpretation': interpretation
             })
 
-        logger.info(f"选取Top {len(top_posts)} 个帖子进行深度分析")
+        logger.info(f"选取Top {len(top_posts)} 个帖子进行深度分析 (其中 {sum(1 for p in top_posts if p['has_image'])} 个包含图片)")
 
         # 第二阶段:深度分析
         analyzed_reports = process_depth_analysis_batch(top_posts, llm_processor, db_manager, processing_config)
