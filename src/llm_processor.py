@@ -241,6 +241,81 @@ class LLMProcessor:
         logger.info(f"计算得分: {score} (属性分 + 类型分 + 丰富度分)")
         return score
 
+    def _extract_json_from_response(self, content: str) -> Optional[Dict]:
+        """从LLM响应中提取JSON,支持多种格式
+
+        Args:
+            content: LLM响应内容
+
+        Returns:
+            解析后的JSON对象,失败返回None
+        """
+        if not content or not content.strip():
+            logger.warning("LLM响应内容为空")
+            return None
+
+        content = content.strip()
+
+        # 方法1: 尝试直接解析
+        try:
+            return json.loads(content)
+        except json.JSONDecodeError:
+            pass
+
+        # 方法2: 提取 ```json ... ``` 代码块
+        json_block_pattern = r'```(?:json)?\s*(\{.*?\})\s*```'
+        json_match = re.search(json_block_pattern, content, re.DOTALL)
+        if json_match:
+            try:
+                json_str = json_match.group(1).strip()
+                return json.loads(json_str)
+            except json.JSONDecodeError as e:
+                logger.warning(f"代码块内JSON解析失败: {e}")
+
+        # 方法3: 去除markdown代码块标记后解析
+        if content.startswith('```'):
+            lines = content.split('\n')
+            # 去除第一行(```json)
+            if lines[0].startswith('```'):
+                lines = lines[1:]
+            # 去除最后一行(```)
+            if lines and lines[-1].strip() == '```':
+                lines = lines[:-1]
+            cleaned = '\n'.join(lines).strip()
+            try:
+                return json.loads(cleaned)
+            except json.JSONDecodeError as e:
+                logger.warning(f"去除代码块标记后解析失败: {e}")
+
+        # 方法4: 提取第一个 { 到最后一个 } 之间的内容
+        first_brace = content.find('{')
+        last_brace = content.rfind('}')
+        if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+            extracted = content[first_brace:last_brace+1]
+            try:
+                return json.loads(extracted)
+            except json.JSONDecodeError as e:
+                logger.warning(f"提取大括号内容后解析失败: {e}")
+                # 记录解析失败的位置
+                error_pos = getattr(e, 'pos', None)
+                if error_pos and error_pos < len(extracted):
+                    logger.debug(f"错误位置附近: {extracted[max(0, error_pos-30):error_pos+30]}")
+
+        # 方法5: 尝试修复常见的JSON格式问题
+        # 例如: 单引号替换为双引号
+        try:
+            # 这个方法有风险,可能破坏字符串内容,谨慎使用
+            fixed = content.replace("'", '"')
+            return json.loads(fixed)
+        except json.JSONDecodeError:
+            pass
+
+        logger.error(f"所有JSON提取方法均失败")
+        logger.debug(f"响应前200字符: {content[:200]}")
+        logger.debug(f"响应后200字符: {content[-200:]}")
+
+        return None
+
     def run_depth_analysis(self, post_content: str, retry_delay: float = 2.0) -> Dict[str, Any]:
         """运行深度分析(Smart Model)
 
@@ -321,6 +396,11 @@ class LLMProcessor:
   ]
 }}
 
+**重要提示**:
+1. 必须返回纯净的JSON格式,不要添加任何解释性文字
+2. 如果需要用代码块包裹,请使用 ```json ... ```
+3. 确保所有字段都填写完整
+
 [原文Post]如下:
 ```
 {post_content}
@@ -336,32 +416,37 @@ class LLMProcessor:
             result = self._make_request(prompt, model_name, temperature=0.5, max_retries=2)
 
             if result.get('success'):
-                # 解析JSON响应
-                try:
-                    content = result['content']
+                # 使用改进的JSON提取方法
+                content = result['content']
+                analysis_report = self._extract_json_from_response(content)
 
-                    # 尝试提取JSON部分
-                    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', content, re.DOTALL)
-                    if json_match:
-                        json_str = json_match.group(1)
+                if analysis_report:
+                    # 验证必要的字段
+                    required_fields = ['deconstruction', 'internalization_and_expression_techniques', 'reconstruction_showcase']
+                    missing_fields = [f for f in required_fields if f not in analysis_report]
+
+                    if missing_fields:
+                        logger.warning(f"JSON缺少必要字段: {missing_fields}")
+                        last_result = {
+                            'success': False,
+                            'error': f"JSON缺少必要字段: {missing_fields}",
+                            'model': model_name,
+                            'raw_content': content
+                        }
                     else:
-                        json_str = content
-
-                    analysis_report = json.loads(json_str)
-
-                    return {
-                        'success': True,
-                        'report': analysis_report,
-                        'model': result['model']
-                    }
-
-                except json.JSONDecodeError as e:
-                    logger.error(f"JSON解析失败 (模型: {model_name}): {e}")
+                        logger.info(f"成功解析JSON报告,包含所有必要字段")
+                        return {
+                            'success': True,
+                            'report': analysis_report,
+                            'model': result['model']
+                        }
+                else:
+                    logger.error(f"无法从响应中提取有效JSON (模型: {model_name})")
                     last_result = {
                         'success': False,
-                        'error': f"JSON解析失败: {str(e)}",
+                        'error': '无法从响应中提取有效JSON',
                         'model': model_name,
-                        'raw_content': result['content']
+                        'raw_content': content
                     }
 
             else:
