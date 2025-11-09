@@ -225,15 +225,15 @@ class LLMProcessor:
 
         # 内容类型分 (总计15分)
         category = priority_analysis.get('post_category', '')
-        if category in ['技术洞察', '行业观察', '产品评论']:
+        if category in ['技术洞察', '行业观察', '个人感悟']:
             score += 15
-        elif category in ['个人感悟', '教程指南']:
+        elif category in ['产品评论', '教程指南']:
             score += 10
         elif category in ['新闻速递', '生活分享']:
             score += 5
 
         # 内容丰富度分 (总计15分)
-        if content_length > 200:
+        if content_length > 150:
             score += 10
         if priority_analysis.get('has_image'):
             score += 5

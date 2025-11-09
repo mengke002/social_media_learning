@@ -82,8 +82,12 @@ def process_priority_analysis_batch(posts: List[Dict[str, Any]], llm_processor: 
                 logger.error(f"优先级分析失败: {priority_result.get('error')}")
                 return None
 
-            # 计算最终分数
-            content_length = len(post.get('original_content', ''))
+            # 计算最终分数 - 使用去除图片markdown后的内容长度
+            import re
+            original_content = post.get('original_content', '')
+            cleaned_content = re.sub(r'!\[.*?\]\(.*?\)', '', original_content).strip()
+            content_length = len(cleaned_content)
+
             final_score = llm_processor.calculate_priority_score(priority_result, content_length)
 
             # 判断是否值得处理
