@@ -384,6 +384,7 @@ class LLMProcessor:
 请严格按照以下JSON结构,完成你的分析与创作报告:
 
 {{
+  "page_title": "为这篇笔记生成一个简洁、吸引人的标题(10-25个字),能够概括核心主题,适合作为Notion页面标题",
   "deconstruction": {{
     "post_type": "分析原文属于哪种类型。候选:'技术洞察', '行业观察', '产品评论', '个人感悟', '新闻速递', '生活分享', '教程指南'。",
     "core_thesis": "用一句话精准提炼原文的核心论点或情感核心。如果有图片,请融合vlm结合视觉的整体解读。",
@@ -457,7 +458,7 @@ class LLMProcessor:
 
                 if analysis_report:
                     # 验证必要的字段
-                    required_fields = ['deconstruction', 'internalization_and_expression_techniques', 'reconstruction_showcase']
+                    required_fields = ['page_title', 'deconstruction', 'internalization_and_expression_techniques', 'reconstruction_showcase']
                     missing_fields = [f for f in required_fields if f not in analysis_report]
 
                     if missing_fields:

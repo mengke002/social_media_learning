@@ -234,17 +234,19 @@ class NotionClient:
             return None
 
     def _parse_rich_text(self, text: str) -> List[Dict]:
-        """解析文本中的链接,支持Markdown链接格式"""
+        """解析文本中的链接和Markdown格式,支持链接和加粗"""
         if not text:
             return [{"type": "text", "text": {"content": ""}}]
 
         rich_text = []
         # 匹配Markdown链接: [文本](URL)
-        link_pattern = r'\[([^\]]+)\]\((https?://[^)]+)\)'
+        # 匹配Markdown加粗: **文本**
+        # 组合模式,按顺序处理
+        combined_pattern = r'(\[([^\]]+)\]\((https?://[^)]+)\))|(\*\*([^*]+)\*\*)'
         last_end = 0
 
-        for match in re.finditer(link_pattern, text):
-            # 添加链接前的普通文本
+        for match in re.finditer(combined_pattern, text):
+            # 添加匹配前的普通文本
             if match.start() > last_end:
                 before_text = text[last_end:match.start()]
                 if before_text:
@@ -253,16 +255,24 @@ class NotionClient:
                         "text": {"content": before_text}
                     })
 
-            # 添加链接
-            link_text = match.group(1)
-            link_url = match.group(2)
-            rich_text.append({
-                "type": "text",
-                "text": {
-                    "content": link_text,
-                    "link": {"url": link_url}
-                }
-            })
+            # 判断是链接还是加粗
+            if match.group(1):  # 链接
+                link_text = match.group(2)
+                link_url = match.group(3)
+                rich_text.append({
+                    "type": "text",
+                    "text": {
+                        "content": link_text,
+                        "link": {"url": link_url}
+                    }
+                })
+            elif match.group(4):  # 加粗
+                bold_text = match.group(5)
+                rich_text.append({
+                    "type": "text",
+                    "text": {"content": bold_text},
+                    "annotations": {"bold": True}
+                })
 
             last_end = match.end()
 
@@ -306,10 +316,18 @@ class NotionClient:
             internalization = analysis.get('internalization_and_expression_techniques', {})
             reconstruction = analysis.get('reconstruction_showcase', [])
 
-            # 生成页面标题
-            core_thesis = deconstruction.get('core_thesis', '学习笔记')
-            author = report_data.get('author_name', '未知')
-            page_title = f"📝 {core_thesis[:40]} - {author}"
+            # 生成页面标题 - 优先使用LLM生成的title,否则使用core_thesis
+            page_title = analysis.get('page_title')
+            if not page_title:
+                core_thesis = deconstruction.get('core_thesis', '学习笔记')
+                author = report_data.get('author_name', '未知')
+                page_title = f"📝 {core_thesis[:40]} - {author}"
+            else:
+                # 如果有LLM生成的title,在前面加个图标
+                page_title = f"📝 {page_title}"
+
+            # 提取core_thesis用于显示
+            core_thesis = deconstruction.get('core_thesis', '')
 
             # 构建Notion blocks
             blocks = []
@@ -406,16 +424,26 @@ class NotionClient:
                     tech_suggestion = tech.get('application_suggestion', '')
 
                     if tech_name and tech_suggestion:
+                        # 技巧名称(加粗蓝色)
                         technique_children.append({
                             "object": "block",
                             "type": "paragraph",
                             "paragraph": {
                                 "rich_text": [
-                                    {"type": "text", "text": {"content": f"{tech_name}\n"}, "annotations": {"bold": True, "color": "blue"}},
-                                    {"type": "text", "text": {"content": tech_suggestion[:1500]}}
+                                    {"type": "text", "text": {"content": tech_name}, "annotations": {"bold": True, "color": "blue"}}
                                 ]
                             }
                         })
+
+                        # 技巧建议(支持markdown格式)
+                        technique_children.append({
+                            "object": "block",
+                            "type": "paragraph",
+                            "paragraph": {
+                                "rich_text": self._parse_rich_text(tech_suggestion[:1500])
+                            }
+                        })
+
                         # 添加分隔
                         if tech != technique_analysis[-1]:
                             technique_children.append({
@@ -455,13 +483,14 @@ class NotionClient:
                             }
                         })
 
-                        # 重构内容(Code块)
+                        # 重构内容 - 使用callout块,有背景色且支持自动换行和markdown格式
                         reconstruction_children.append({
                             "object": "block",
-                            "type": "code",
-                            "code": {
-                                "rich_text": [{"type": "text", "text": {"content": content[:1900]}}],
-                                "language": "plain text"
+                            "type": "callout",
+                            "callout": {
+                                "rich_text": self._parse_rich_text(content[:1900]),
+                                "icon": {"emoji": "✍️"},
+                                "color": "gray_background"
                             }
                         })
 
@@ -476,6 +505,14 @@ class NotionClient:
                                         {"type": "text", "text": {"content": rationale[:900]}, "annotations": {"italic": True}}
                                     ]
                                 }
+                            })
+
+                        # 添加分隔(如果不是最后一个)
+                        if recon != reconstruction[-1]:
+                            reconstruction_children.append({
+                                "object": "block",
+                                "type": "divider",
+                                "divider": {}
                             })
 
                 if reconstruction_children:

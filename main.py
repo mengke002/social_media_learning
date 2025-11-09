@@ -6,6 +6,8 @@ import argparse
 import logging
 import sys
 import time
+import queue
+import threading
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Any
@@ -406,10 +408,72 @@ def task_fast_llm_analysis(args):
         raise
 
 
+def notion_push_worker(push_queue: queue.Queue, notion_client: NotionClient,
+                       db_manager: DatabaseManager, daily_page_id: str,
+                       stats_dict: Dict[str, int]):
+    """Notion推送工作线程
+
+    从队列中获取分析完成的报告并立即推送到Notion
+
+    Args:
+        push_queue: 报告队列
+        notion_client: Notion客户端
+        db_manager: 数据库管理器
+        daily_page_id: 当日页面ID
+        stats_dict: 统计信息字典(线程安全,只在此线程中写入)
+    """
+    logger = logging.getLogger(__name__)
+    logger.info("Notion推送工作线程启动")
+
+    while True:
+        try:
+            # 从队列获取报告,带超时机制
+            report = push_queue.get(timeout=1)
+
+            # 如果收到None,表示所有任务完成,退出线程
+            if report is None:
+                logger.info("收到退出信号,Notion推送线程结束")
+                break
+
+            # 立即推送到Notion
+            platform = report['source_platform']
+            post_id = report['source_post_id']
+            logger.info(f"推送报告到Notion: {platform}/{post_id}")
+
+            push_result = notion_client.format_and_push_report(report, daily_page_id)
+
+            if push_result.get('success'):
+                # 标记为已推送
+                db_manager.mark_as_pushed(
+                    platform,
+                    post_id,
+                    push_result['page_url']
+                )
+                stats_dict['pushed'] += 1
+                logger.info(f"报告推送成功: {push_result['page_url']}")
+            else:
+                logger.error(f"报告推送失败: {push_result.get('error')}")
+                stats_dict['failed'] += 1
+
+            # 标记任务完成
+            push_queue.task_done()
+
+            # 添加延迟避免API限速
+            time.sleep(0.5)
+
+        except queue.Empty:
+            # 队列为空,继续等待
+            continue
+        except Exception as e:
+            logger.error(f"Notion推送线程出错: {e}", exc_info=True)
+            push_queue.task_done()
+
+
 def task_smart_model_analysis(args):
     """任务2: Smart Model深度分析 + Notion推送 (每4小时运行)
 
-    从数据库中获取高分帖子,进行深度分析并推送到Notion
+    从数据库中获取高分帖子,进行深度分析并**立即**推送到Notion
+    使用独立线程进行推送,避免批处理导致的数据丢失
     """
     logger = logging.getLogger(__name__)
 
@@ -471,22 +535,134 @@ def task_smart_model_analysis(args):
 
         logger.info(f"选取Top {len(top_posts)} 个帖子进行深度分析 (其中 {sum(1 for p in top_posts if p['has_image'])} 个包含图片)")
 
-        # 第二阶段:深度分析
-        analyzed_reports = process_depth_analysis_batch(top_posts, llm_processor, db_manager, processing_config)
+        # 创建当天的学习页面
+        today = datetime.now()
+        daily_page_id = notion_client.create_daily_learning_page(today)
 
-        if not analyzed_reports:
-            logger.info("没有成功完成深度分析的报告")
+        if not daily_page_id:
+            logger.error("无法创建每日学习页面,推送终止")
             return
 
-        # 第三阶段:推送到Notion
-        push_to_notion_batch(analyzed_reports, notion_client, db_manager)
+        # 创建推送队列和统计字典
+        push_queue = queue.Queue()
+        stats_dict = {'pushed': 0, 'failed': 0, 'analyzed': 0}
+
+        # 启动Notion推送工作线程
+        push_thread = threading.Thread(
+            target=notion_push_worker,
+            args=(push_queue, notion_client, db_manager, daily_page_id, stats_dict),
+            daemon=False
+        )
+        push_thread.start()
+        logger.info("Notion推送工作线程已启动")
+
+        # 深度分析阶段 - 边分析边推送
+        logger.info(f"=" * 60)
+        logger.info(f"开始深度分析 + 即时推送 (共 {len(top_posts)} 个帖子)")
+        logger.info(f"=" * 60)
+
+        smart_workers = processing_config['smart_model_workers']
+        smart_delay = processing_config['smart_model_delay']
+        retry_delay = processing_config['smart_model_retry_delay']
+
+        def analyze_and_queue_post(post):
+            """分析单个帖子并立即加入推送队列"""
+            try:
+                post_id = post['source_post_id']
+                platform = post['source_platform']
+
+                logger.info(f"深度分析帖子: {platform}/{post_id}")
+
+                # 构建分析内容
+                has_image = post.get('has_image', False)
+                interpretation = post.get('interpretation')
+                original_content = post['original_content']
+
+                # 去除原文中的图片markdown标记
+                import re
+                cleaned_content = re.sub(r'!\[.*?\]\(.*?\)', '', original_content)
+                cleaned_content = cleaned_content.strip()
+
+                if has_image and interpretation:
+                    analysis_content = f"""[原始帖子内容]
+{cleaned_content}
+
+[图片视觉解读]
+{interpretation}
+"""
+                    logger.info(f"帖子包含图片,已附加VLM解读 (解读长度: {len(interpretation)} 字符)")
+                else:
+                    analysis_content = cleaned_content
+                    logger.info("帖子不含图片,仅使用原文内容")
+
+                # 运行Smart Model深度分析
+                depth_result = llm_processor.run_depth_analysis(analysis_content, retry_delay=retry_delay)
+
+                if not depth_result.get('success'):
+                    logger.error(f"深度分析失败: {depth_result.get('error')}")
+                    return None
+
+                # 更新数据库
+                db_manager.update_with_depth_analysis(
+                    platform,
+                    post_id,
+                    depth_result['report'],
+                    depth_result['model']
+                )
+
+                stats_dict['analyzed'] += 1
+                logger.info(f"帖子 {platform}/{post_id} 深度分析完成,使用模型: {depth_result['model']}")
+
+                # 立即将报告加入推送队列
+                report = {
+                    'source_platform': platform,
+                    'source_post_id': post_id,
+                    'original_content': post.get('original_content'),
+                    'original_url': post.get('original_url'),
+                    'author_name': post.get('author_name'),
+                    'analysis_report': depth_result['report'],
+                    'model_used': depth_result['model']
+                }
+
+                push_queue.put(report)
+                logger.info(f"报告已加入推送队列: {platform}/{post_id}")
+
+                return True
+
+            except Exception as e:
+                logger.error(f"深度分析帖子时出错: {e}", exc_info=True)
+                return None
+
+        # 使用线程池并发处理(数量较少以避免限速)
+        with ThreadPoolExecutor(max_workers=smart_workers) as executor:
+            futures = [executor.submit(analyze_and_queue_post, post) for post in top_posts]
+
+            for future in as_completed(futures):
+                result = future.result()
+                # 添加延迟避免API限速
+                time.sleep(smart_delay)
+
+        # 所有分析完成,发送退出信号给推送线程
+        logger.info("所有分析任务完成,等待推送线程完成...")
+        push_queue.put(None)
+
+        # 等待推送线程完成
+        push_thread.join(timeout=300)  # 最多等待5分钟
+
+        if push_thread.is_alive():
+            logger.warning("推送线程未在超时时间内完成")
+        else:
+            logger.info("推送线程已完成")
 
         # 打印统计信息
-        stats = db_manager.get_statistics()
+        db_stats = db_manager.get_statistics()
         logger.info("=" * 60)
         logger.info("Smart Model分析完成 - 统计信息:")
-        logger.info(f"  深度分析: {stats.get('depth_analyzed', 0)}")
-        logger.info(f"  已推送: {stats.get('pushed_to_notion', 0)}")
+        logger.info(f"  本次深度分析: {stats_dict['analyzed']}")
+        logger.info(f"  本次推送成功: {stats_dict['pushed']}")
+        logger.info(f"  本次推送失败: {stats_dict['failed']}")
+        logger.info(f"  数据库总深度分析: {db_stats.get('depth_analyzed', 0)}")
+        logger.info(f"  数据库总已推送: {db_stats.get('pushed_to_notion', 0)}")
         logger.info("=" * 60)
 
     except Exception as e:
