@@ -59,6 +59,11 @@ jobs:
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           LLM_FAST_MODEL_NAME: ${{ secrets.LLM_FAST_MODEL_NAME }}
 
+          # 处理配置(可选覆盖,如未设置则使用代码默认值)
+          PROCESSING_DAYS_BACK: ${{ secrets.PROCESSING_DAYS_BACK || '' }}
+          PROCESSING_PRIORITY_THRESHOLD: ${{ secrets.PROCESSING_PRIORITY_THRESHOLD || '' }}
+          PROCESSING_FAST_LLM_WORKERS: ${{ secrets.PROCESSING_FAST_LLM_WORKERS || '' }}
+
         run: |
           python3.12 main.py --task fast_llm
 

@@ -48,7 +48,8 @@ class Config:
     def _get_config_value(self, section: str, key: str, env_var: str, default_value: Any, value_type=str) -> Any:
         """按优先级获取配置值：环境变量 > config.ini > 默认值"""
         env_val = os.getenv(env_var)
-        if env_val is not None:
+        # 明确检查:如果环境变量存在且非空,才使用
+        if env_val is not None and env_val.strip():
             try:
                 return value_type(env_val)
             except (ValueError, TypeError):

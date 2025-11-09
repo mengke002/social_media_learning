@@ -63,6 +63,13 @@ jobs:
           NOTION_INTEGRATION_TOKEN: ${{ secrets.NOTION_INTEGRATION_TOKEN }}
           NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
 
+          # 处理配置(可选覆盖,如未设置则使用代码默认值)
+          PROCESSING_DAYS_BACK: ${{ secrets.PROCESSING_DAYS_BACK || '' }}
+          PROCESSING_PRIORITY_THRESHOLD: ${{ secrets.PROCESSING_PRIORITY_THRESHOLD || '' }}
+          PROCESSING_TOP_N_POSTS: ${{ secrets.PROCESSING_TOP_N_POSTS || '' }}
+          PROCESSING_FAST_LLM_WORKERS: ${{ secrets.PROCESSING_FAST_LLM_WORKERS || '' }}
+          PROCESSING_SMART_MODEL_WORKERS: ${{ secrets.PROCESSING_SMART_MODEL_WORKERS || '' }}
+
         run: |
           python3.12 main.py --task daily_learning
 
