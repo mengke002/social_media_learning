@@ -23,8 +23,32 @@ class SourceReader:
         """
         self.config = config
         self.learning_db = learning_db_manager
-        self.x_config = config.get_source_x_config()
-        self.jike_config = config.get_source_jike_config()
+
+        # 延迟初始化数据库配置,只在需要时才获取
+        self._x_config = None
+        self._jike_config = None
+
+    def _ensure_x_config(self):
+        """确保X数据库配置已加载"""
+        if self._x_config is None:
+            self._x_config = self.config.get_source_x_config()
+        return self._x_config
+
+    def _ensure_jike_config(self):
+        """确保即刻数据库配置已加载"""
+        if self._jike_config is None:
+            self._jike_config = self.config.get_source_jike_config()
+        return self._jike_config
+
+    @property
+    def x_config(self):
+        """获取X数据库配置"""
+        return self._ensure_x_config()
+
+    @property
+    def jike_config(self):
+        """获取即刻数据库配置"""
+        return self._ensure_jike_config()
 
     @contextmanager
     def _get_x_connection(self):
