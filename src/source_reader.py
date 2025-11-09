@@ -64,6 +64,8 @@ class SourceReader:
             帖子列表
         """
         try:
+            logger.info(f"开始从X数据库查询最近 {days_back} 天的帖子...")
+
             with self._get_x_connection() as conn:
                 cursor = conn.cursor(pymysql.cursors.DictCursor)
 
@@ -91,31 +93,41 @@ class SourceReader:
 
                 cursor.execute(sql, (days_back,))
                 posts = cursor.fetchall()
+                logger.info(f"从X数据库查询到 {len(posts)} 个帖子")
 
-                # 过滤掉已处理的帖子
-                unprocessed = []
-                for post in posts:
-                    post_id = str(post['id'])
-                    if not self.learning_db.check_if_processed('X', post_id):
-                        unprocessed.append({
-                            'source_post_id': post_id,
-                            'source_platform': 'X',
-                            'original_content': post['post_content'] or '',
-                            'original_url': post['post_url'],
-                            'author_name': post['user_id'],
-                            'published_at': post['published_at'],
-                            'media_urls': post.get('media_urls'),
-                            'summary': post.get('summary'),
-                            'tag': post.get('tag'),
-                            'content_type': post.get('content_type'),
-                            'interpretation': post.get('interpretation')
-                        })
+            # 批量检查已处理的帖子ID
+            if not posts:
+                return []
 
-                logger.info(f"从X数据库获取到 {len(unprocessed)} 个未处理的帖子 (总共 {len(posts)} 个)")
-                return unprocessed
+            post_ids = [str(post['id']) for post in posts]
+            logger.info(f"批量检查 {len(post_ids)} 个帖子的处理状态...")
+            processed_ids = self.learning_db.get_processed_post_ids('X', post_ids)
+            logger.info(f"其中 {len(processed_ids)} 个已处理")
+
+            # 过滤掉已处理的帖子
+            unprocessed = []
+            for post in posts:
+                post_id = str(post['id'])
+                if post_id not in processed_ids:
+                    unprocessed.append({
+                        'source_post_id': post_id,
+                        'source_platform': 'X',
+                        'original_content': post['post_content'] or '',
+                        'original_url': post['post_url'],
+                        'author_name': post['user_id'],
+                        'published_at': post['published_at'],
+                        'media_urls': post.get('media_urls'),
+                        'summary': post.get('summary'),
+                        'tag': post.get('tag'),
+                        'content_type': post.get('content_type'),
+                        'interpretation': post.get('interpretation')
+                    })
+
+            logger.info(f"从X数据库获取到 {len(unprocessed)} 个未处理的帖子")
+            return unprocessed
 
         except Exception as e:
-            logger.error(f"从X数据库获取帖子失败: {e}")
+            logger.error(f"从X数据库获取帖子失败: {e}", exc_info=True)
             return []
 
     def get_unprocessed_jike_posts(self, days_back: int = 1) -> List[Dict[str, Any]]:
@@ -128,6 +140,8 @@ class SourceReader:
             帖子列表
         """
         try:
+            logger.info(f"开始从即刻数据库查询最近 {days_back} 天的帖子...")
+
             with self._get_jike_connection() as conn:
                 cursor = conn.cursor(pymysql.cursors.DictCursor)
 
@@ -152,35 +166,45 @@ class SourceReader:
 
                 cursor.execute(sql, (days_back,))
                 posts = cursor.fetchall()
+                logger.info(f"从即刻数据库查询到 {len(posts)} 个帖子")
 
-                # 过滤掉已处理的帖子
-                unprocessed = []
-                for post in posts:
-                    post_id = str(post['id'])
-                    if not self.learning_db.check_if_processed('Jike', post_id):
-                        # 组合标题和摘要作为内容
-                        content_parts = []
-                        if post.get('title'):
-                            content_parts.append(post['title'])
-                        if post.get('summary'):
-                            content_parts.append(post['summary'])
-                        original_content = '\n\n'.join(content_parts)
+            # 批量检查已处理的帖子ID
+            if not posts:
+                return []
 
-                        unprocessed.append({
-                            'source_post_id': post_id,
-                            'source_platform': 'Jike',
-                            'original_content': original_content,
-                            'original_url': post['link'],
-                            'author_name': post['nickname'] or post['jike_user_id'],
-                            'published_at': post['published_at'],
-                            'interpretation': post.get('interpretation_text')
-                        })
+            post_ids = [str(post['id']) for post in posts]
+            logger.info(f"批量检查 {len(post_ids)} 个帖子的处理状态...")
+            processed_ids = self.learning_db.get_processed_post_ids('Jike', post_ids)
+            logger.info(f"其中 {len(processed_ids)} 个已处理")
 
-                logger.info(f"从即刻数据库获取到 {len(unprocessed)} 个未处理的帖子 (总共 {len(posts)} 个)")
-                return unprocessed
+            # 过滤掉已处理的帖子
+            unprocessed = []
+            for post in posts:
+                post_id = str(post['id'])
+                if post_id not in processed_ids:
+                    # 组合标题和摘要作为内容
+                    content_parts = []
+                    if post.get('title'):
+                        content_parts.append(post['title'])
+                    if post.get('summary'):
+                        content_parts.append(post['summary'])
+                    original_content = '\n\n'.join(content_parts)
+
+                    unprocessed.append({
+                        'source_post_id': post_id,
+                        'source_platform': 'Jike',
+                        'original_content': original_content,
+                        'original_url': post['link'],
+                        'author_name': post['nickname'] or post['jike_user_id'],
+                        'published_at': post['published_at'],
+                        'interpretation': post.get('interpretation_text')
+                    })
+
+            logger.info(f"从即刻数据库获取到 {len(unprocessed)} 个未处理的帖子")
+            return unprocessed
 
         except Exception as e:
-            logger.error(f"从即刻数据库获取帖子失败: {e}")
+            logger.error(f"从即刻数据库获取帖子失败: {e}", exc_info=True)
             return []
 
     def get_all_unprocessed_posts(self, days_back: int = 1) -> List[Dict[str, Any]]:

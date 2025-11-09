@@ -125,6 +125,41 @@ class DatabaseManager:
             logger.error(f"检查帖子是否已处理失败: {e}")
             return False
 
+    def get_processed_post_ids(self, source_platform: str, post_ids: List[str]) -> set:
+        """批量检查哪些帖子ID已被处理(优化版,避免N+1查询)
+
+        Args:
+            source_platform: 来源平台 ('X' 或 'Jike')
+            post_ids: 帖子ID列表
+
+        Returns:
+            已处理的帖子ID集合
+        """
+        try:
+            if not post_ids:
+                return set()
+
+            with self.get_connection() as conn:
+                cursor = conn.cursor()
+
+                # 使用IN查询批量检查
+                placeholders = ','.join(['%s'] * len(post_ids))
+                sql = f"""
+                SELECT source_post_id FROM processed_posts
+                WHERE source_platform = %s AND source_post_id IN ({placeholders})
+                """
+
+                params = [source_platform] + post_ids
+                cursor.execute(sql, params)
+
+                # 返回已处理的ID集合
+                processed_ids = {row[0] for row in cursor.fetchall()}
+                return processed_ids
+
+        except Exception as e:
+            logger.error(f"批量检查帖子处理状态失败: {e}")
+            return set()
+
     def save_priority_analysis(self, post_data: Dict[str, Any]) -> bool:
         """保存第一阶段Fast LLM的优先级分析结果
 
