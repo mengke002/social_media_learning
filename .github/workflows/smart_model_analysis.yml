@@ -38,6 +38,22 @@ jobs:
           LEARNING_DB_NAME: ${{ secrets.LEARNING_DB_NAME }}
           LEARNING_DB_SSL_MODE: REQUIRED
 
+          # X数据源配置
+          SOURCE_X_DB_HOST: ${{ secrets.SOURCE_X_DB_HOST }}
+          SOURCE_X_DB_PORT: ${{ secrets.SOURCE_X_DB_PORT }}
+          SOURCE_X_DB_USER: ${{ secrets.SOURCE_X_DB_USER }}
+          SOURCE_X_DB_PASSWORD: ${{ secrets.SOURCE_X_DB_PASSWORD }}
+          SOURCE_X_DB_NAME: ${{ secrets.SOURCE_X_DB_NAME }}
+          SOURCE_X_DB_SSL_MODE: REQUIRED
+
+          # 即刻数据源配置
+          SOURCE_JIKE_DB_HOST: ${{ secrets.SOURCE_JIKE_DB_HOST }}
+          SOURCE_JIKE_DB_PORT: ${{ secrets.SOURCE_JIKE_DB_PORT }}
+          SOURCE_JIKE_DB_USER: ${{ secrets.SOURCE_JIKE_DB_USER }}
+          SOURCE_JIKE_DB_PASSWORD: ${{ secrets.SOURCE_JIKE_DB_PASSWORD }}
+          SOURCE_JIKE_DB_NAME: ${{ secrets.SOURCE_JIKE_DB_NAME }}
+          SOURCE_JIKE_DB_SSL_MODE: REQUIRED
+
           # LLM配置
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
@@ -46,12 +62,6 @@ jobs:
           # Notion配置
           NOTION_INTEGRATION_TOKEN: ${{ secrets.NOTION_INTEGRATION_TOKEN }}
           NOTION_PARENT_PAGE_ID: ${{ secrets.NOTION_PARENT_PAGE_ID }}
-
-          # 处理配置
-          PROCESSING_TOP_N_POSTS: 20
-          PROCESSING_SMART_MODEL_WORKERS: 2
-          PROCESSING_SMART_MODEL_DELAY: 2.0
-          PROCESSING_SMART_MODEL_RETRY_DELAY: 10.0
 
         run: |
           python3.12 main.py --task smart_model
