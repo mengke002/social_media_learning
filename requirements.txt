@@ -11,8 +11,5 @@ requests==2.31.0
 # 环境变量管理
 python-dotenv==1.0.0
 
-# 日志
-logging
-
 # 其他工具
-typing-extensions==4.9.0
+typing-extensions>=4.15
