@@ -58,6 +58,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           LLM_SMART_MODELS: ${{ secrets.LLM_SMART_MODELS }}
+          LLM_MAX_TOKENS: ${{ secrets.LLM_MAX_TOKENS }}
+          LLM_SMART_MODEL_MAX_TOKENS: ${{ secrets.LLM_SMART_MODEL_MAX_TOKENS }}
 
           # Notion配置
           NOTION_INTEGRATION_TOKEN: ${{ secrets.NOTION_INTEGRATION_TOKEN }}

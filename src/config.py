@@ -193,6 +193,7 @@ class Config:
             'openai_base_url': self._get_config_value('llm', 'openai_base_url', 'OPENAI_BASE_URL', 'https://api.openai.com/v1'),
             'max_content_length': self._get_config_value('llm', 'max_content_length', 'LLM_MAX_CONTENT_LENGTH', 380000, int),
             'max_tokens': self._get_config_value('llm', 'max_tokens', 'LLM_MAX_TOKENS', 20000, int),
+            'smart_model_max_tokens': self._get_config_value('llm', 'smart_model_max_tokens', 'LLM_SMART_MODEL_MAX_TOKENS', 16000, int),
         }
 
     def get_notion_config(self) -> Dict[str, Any]:

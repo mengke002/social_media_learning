@@ -29,6 +29,7 @@ class LLMProcessor:
         self.fast_model = llm_config.get('fast_model_name')
         self.smart_models = llm_config.get('smart_models', [])
         self.max_tokens = llm_config.get('max_tokens', 20000)
+        self.smart_model_max_tokens = llm_config.get('smart_model_max_tokens', 16000)
 
         if not self.api_key:
             raise ValueError("未找到OPENAI_API_KEY配置")
@@ -39,7 +40,7 @@ class LLMProcessor:
         logger.info(f"Fast Model: {self.fast_model}")
         logger.info(f"Smart Models: {self.smart_models}")
 
-    def _make_request(self, prompt: str, model_name: str, temperature: float = 0.3, max_retries: int = 3) -> Dict[str, Any]:
+    def _make_request(self, prompt: str, model_name: str, temperature: float = 0.3, max_retries: int = 3, max_tokens: Optional[int] = None) -> Dict[str, Any]:
         """执行LLM请求,支持streaming和重试机制
 
         Args:
@@ -47,10 +48,14 @@ class LLMProcessor:
             model_name: 模型名称
             temperature: 生成温度
             max_retries: 最大重试次数
+            max_tokens: 最大token数限制(覆盖默认值)
 
         Returns:
             响应结果字典
         """
+        # 使用传入的max_tokens或默认值
+        request_max_tokens = max_tokens if max_tokens is not None else self.max_tokens
+
         for attempt in range(max_retries):
             try:
                 logger.info(f"调用LLM: {model_name} (尝试 {attempt + 1}/{max_retries})")
@@ -63,7 +68,7 @@ class LLMProcessor:
                         {'role': 'user', 'content': prompt}
                     ],
                     temperature=temperature,
-                    max_tokens=self.max_tokens,
+                    max_tokens=request_max_tokens,
                     stream=True
                 )
 
@@ -449,7 +454,7 @@ class LLMProcessor:
         for model_name in self.smart_models:
             logger.info(f"尝试使用Smart Model: {model_name}")
 
-            result = self._make_request(prompt, model_name, temperature=0.5, max_retries=2)
+            result = self._make_request(prompt, model_name, temperature=0.5, max_retries=2, max_tokens=self.smart_model_max_tokens)
 
             if result.get('success'):
                 # 使用改进的JSON提取方法

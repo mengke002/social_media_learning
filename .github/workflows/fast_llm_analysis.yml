@@ -58,6 +58,8 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
           LLM_FAST_MODEL_NAME: ${{ secrets.LLM_FAST_MODEL_NAME }}
+          LLM_MAX_TOKENS: ${{ secrets.LLM_MAX_TOKENS }}
+          LLM_SMART_MODEL_MAX_TOKENS: ${{ secrets.LLM_SMART_MODEL_MAX_TOKENS }}
 
           # 处理配置(可选覆盖,如未设置则使用代码默认值)
           PROCESSING_DAYS_BACK: ${{ secrets.PROCESSING_DAYS_BACK || '' }}
