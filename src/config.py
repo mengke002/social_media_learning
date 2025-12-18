@@ -100,9 +100,20 @@ class Config:
         }
 
         # SSL 配置
-        ssl_mode = self._get_config_value('database', 'ssl_mode', 'LEARNING_DB_SSL_MODE', 'disabled')
+        ssl_mode = self._get_config_value('database', 'ssl_mode', 'LEARNING_DB_SSL_MODE', 'REQUIRED')
         if isinstance(ssl_mode, str) and ssl_mode.upper() == 'REQUIRED':
             config['ssl'] = {}
+            # 尝试查找系统CA证书
+            possible_paths = [
+                '/etc/ssl/certs/ca-certificates.crt',  # Debian/Ubuntu/Gentoo
+                '/etc/pki/tls/certs/ca-bundle.crt',    # Fedora/RHEL
+                '/etc/ssl/cert.pem',                   # macOS
+                '/usr/local/etc/openssl/cert.pem',     # macOS Homebrew
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    config['ssl']['ca'] = path
+                    break
 
         # 校验必填
         required = ['host', 'user', 'database', 'password']
@@ -133,9 +144,20 @@ class Config:
         }
 
         # SSL 配置
-        ssl_mode = self._get_config_value('source_x', 'ssl_mode', 'SOURCE_X_DB_SSL_MODE', 'disabled')
+        ssl_mode = self._get_config_value('source_x', 'ssl_mode', 'SOURCE_X_DB_SSL_MODE', 'REQUIRED')
         if isinstance(ssl_mode, str) and ssl_mode.upper() == 'REQUIRED':
             config['ssl'] = {}
+            # 尝试查找系统CA证书
+            possible_paths = [
+                '/etc/ssl/certs/ca-certificates.crt',  # Debian/Ubuntu/Gentoo
+                '/etc/pki/tls/certs/ca-bundle.crt',    # Fedora/RHEL
+                '/etc/ssl/cert.pem',                   # macOS
+                '/usr/local/etc/openssl/cert.pem',     # macOS Homebrew
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    config['ssl']['ca'] = path
+                    break
 
         required = ['host', 'user', 'database', 'password']
         missing = [k for k in required if not config.get(k)]
@@ -165,9 +187,20 @@ class Config:
         }
 
         # SSL 配置
-        ssl_mode = self._get_config_value('source_jike', 'ssl_mode', 'SOURCE_JIKE_DB_SSL_MODE', 'disabled')
+        ssl_mode = self._get_config_value('source_jike', 'ssl_mode', 'SOURCE_JIKE_DB_SSL_MODE', 'REQUIRED')
         if isinstance(ssl_mode, str) and ssl_mode.upper() == 'REQUIRED':
             config['ssl'] = {}
+            # 尝试查找系统CA证书
+            possible_paths = [
+                '/etc/ssl/certs/ca-certificates.crt',  # Debian/Ubuntu/Gentoo
+                '/etc/pki/tls/certs/ca-bundle.crt',    # Fedora/RHEL
+                '/etc/ssl/cert.pem',                   # macOS
+                '/usr/local/etc/openssl/cert.pem',     # macOS Homebrew
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    config['ssl']['ca'] = path
+                    break
 
         required = ['host', 'user', 'database', 'password']
         missing = [k for k in required if not config.get(k)]
