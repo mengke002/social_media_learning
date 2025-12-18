@@ -102,7 +102,7 @@ class Config:
         # SSL 配置
         ssl_mode = self._get_config_value('database', 'ssl_mode', 'LEARNING_DB_SSL_MODE', 'disabled')
         if isinstance(ssl_mode, str) and ssl_mode.upper() == 'REQUIRED':
-            config['ssl'] = {'mode': 'REQUIRED'}
+            config['ssl'] = {}
 
         # 校验必填
         required = ['host', 'user', 'database', 'password']
@@ -135,7 +135,7 @@ class Config:
         # SSL 配置
         ssl_mode = self._get_config_value('source_x', 'ssl_mode', 'SOURCE_X_DB_SSL_MODE', 'disabled')
         if isinstance(ssl_mode, str) and ssl_mode.upper() == 'REQUIRED':
-            config['ssl'] = {'mode': 'REQUIRED'}
+            config['ssl'] = {}
 
         required = ['host', 'user', 'database', 'password']
         missing = [k for k in required if not config.get(k)]
@@ -167,7 +167,7 @@ class Config:
         # SSL 配置
         ssl_mode = self._get_config_value('source_jike', 'ssl_mode', 'SOURCE_JIKE_DB_SSL_MODE', 'disabled')
         if isinstance(ssl_mode, str) and ssl_mode.upper() == 'REQUIRED':
-            config['ssl'] = {'mode': 'REQUIRED'}
+            config['ssl'] = {}
 
         required = ['host', 'user', 'database', 'password']
         missing = [k for k in required if not config.get(k)]
